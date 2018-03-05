@@ -1,8 +1,8 @@
 module Main where
 
-import Prelude (Unit, unit, ($), bind, discard, (*>), pure, (<>), (==), show, (<$>), mod, (*), id, map, (<<<), flip, not)
+import Prelude (($), (*), (*>), (<$>), (<>), (==), Unit, bind, discard, mod, not, pure, show, unit)
 import Data.Int (floor)
-import Data.Array (snoc, deleteAt, (!!), length, modifyAt)
+import Data.Array ((!!), deleteAt, length, modifyAt, snoc)
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.TraversableWithIndex (forWithIndex)
 import Data.Time.Duration (Milliseconds(..))
@@ -10,19 +10,19 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Aff (delay)
 
-import Pux (start, EffModel, noEffects, CoreEffects)
+import Pux (CoreEffects, EffModel, noEffects, start)
 import Pux.Renderer.React (renderToDOM)
 import Pux.DOM.HTML (HTML)
-import Pux.DOM.HTML.Attributes as HA
+import Pux.DOM.HTML.Attributes (key)
 import Pux.DOM.Events as HE
 import Text.Smolder.HTML as H
 import Text.Smolder.HTML.Attributes as HA
-import Text.Smolder.Markup (text, (!), (#!))
+import Text.Smolder.Markup ((!), (#!), text)
 import DOM (DOM)
 import DOM.Event.Event (preventDefault)
-import Signal (filter)
 import Signal.Time (every, second)
 
+-- State
 data State = State
     { items :: Array Todo
     , notification :: Maybe String
@@ -34,6 +34,7 @@ data Todo = Todo
     , completed :: Boolean
     }
 
+-- Events
 data Event
     = ChangeNewItemName HE.DOMEvent
     | AddNewItem HE.DOMEvent
@@ -42,6 +43,7 @@ data Event
     | SetCompleted HE.DOMEvent Int Boolean
     | SetNotification (Maybe String)
 
+-- Views
 list :: State -> HTML Event
 list (State st) =
     H.div do
@@ -61,7 +63,7 @@ itemList todos = H.ul $ forWithIndex todos todoItem *> pure unit
 
 todoItem :: Int -> Todo -> HTML Event
 todoItem index (Todo todo) =
-    H.div ! HA.key (show index) $ do
+    H.div ! key (show index) $ do
         H.span ! HA.className "name" $ text todo.name
         H.input ! HA.type' "checkbox" ! HA.checked (checkedValue todo.completed) #! HE.onClick (\ev -> SetCompleted ev index $ not todo.completed)
         H.a ! HA.className "removeItem" #! HE.onClick (\ev -> RemoveItem ev index) $ text "remove"
@@ -75,6 +77,7 @@ newItem value =
         H.input ! HA.placeholder "new item name" ! HA.value value #! HE.onChange ChangeNewItemName
         H.button #! HE.onClick AddNewItem $ text "Add new item"
 
+-- Handling of events
 foldp :: forall fx. Event -> State -> EffModel State Event (dom :: DOM | fx)
 foldp (ChangeNewItemName ev) (State st) = withPreventDefault ev $ noEffects $ State $ st { newItemName = HE.targetValue ev }
 foldp (AddNewItem ev) state@(State st) = withNotification st.newItemName $ withPreventDefault ev $ noEffects $ modifyItems (appendNewTodo st.newItemName) state
@@ -82,7 +85,7 @@ foldp (AddReceivedItem (Just name)) state = withNotification name $ noEffects $ 
 foldp (AddReceivedItem Nothing) state = noEffects state
 foldp (RemoveItem ev index) state = withPreventDefault ev $ noEffects $ modifyItems (deleteAt index) state
 foldp (SetCompleted ev index completed) st = noEffects $ modifyItems (modifyAt index (setCompleted completed)) st
-foldp (SetNotification notification) st = noEffects $ setNotification notification st
+foldp (SetNotification notificationText) st = noEffects $ setNotification notificationText st
 
 modifyItems :: (Array Todo -> Maybe (Array Todo)) -> State -> State
 modifyItems updater (State st) = State st { items = fromMaybe st.items $  updater st.items }
@@ -97,14 +100,18 @@ setCompleted :: Boolean -> Todo -> Todo
 setCompleted completed (Todo todo) = Todo todo { completed = completed }
 
 setNotification :: Maybe String -> State -> State
-setNotification notification (State st) = State st { notification = notification }
+setNotification notificationText (State st) = State st { notification = notificationText }
 
 withNotification :: forall fx. String -> EffModel State Event (dom :: DOM | fx) -> EffModel State Event (dom :: DOM | fx)
-withNotification notification { state, effects } = { state: state, effects: effects <> [ pure $ Just $ SetNotification $ Just notification
-    , do
-    delay $ Milliseconds 2000.0
-    pure $ Just $ SetNotification Nothing
-    ] }
+withNotification notificationText { state, effects } =
+    { state: state
+    , effects: effects <>
+        [ pure $ Just $ SetNotification $ Just notificationText
+        , do
+            delay $ Milliseconds 2000.0
+            pure $ Just $ SetNotification Nothing
+        ]
+    }
 
 withPreventDefault :: forall fx. HE.DOMEvent -> EffModel State Event (dom :: DOM | fx) -> EffModel State Event (dom :: DOM | fx)
 withPreventDefault ev { state, effects } = { state: state, effects: effects <> [liftEff (preventDefault ev) *> pure Nothing] }
