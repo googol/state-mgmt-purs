@@ -20,6 +20,8 @@ import Text.Smolder.HTML.Attributes as HA
 import Text.Smolder.Markup (text, (!), (#!))
 import DOM (DOM)
 import DOM.Event.Event (preventDefault)
+import Signal (filter)
+import Signal.Time (every, second)
 
 data State = State
     { items :: Array Todo
@@ -36,6 +38,7 @@ data Event
     = ChangeNewItemName HE.DOMEvent
     | AddNewItem HE.DOMEvent
     | RemoveItem HE.DOMEvent Int
+    | AddReceivedItem (Maybe String)
     | SetCompleted HE.DOMEvent Int Boolean
     | SetNotification (Maybe String)
 
@@ -75,6 +78,8 @@ newItem value =
 foldp :: forall fx. Event -> State -> EffModel State Event (dom :: DOM | fx)
 foldp (ChangeNewItemName ev) (State st) = withPreventDefault ev $ noEffects $ State $ st { newItemName = HE.targetValue ev }
 foldp (AddNewItem ev) state@(State st) = withNotification st.newItemName $ withPreventDefault ev $ noEffects $ modifyItems (appendNewTodo st.newItemName) state
+foldp (AddReceivedItem (Just name)) state = withNotification name $ noEffects $ modifyItems (appendNewTodo name) state
+foldp (AddReceivedItem Nothing) state = noEffects state
 foldp (RemoveItem ev index) state = withPreventDefault ev $ noEffects $ modifyItems (deleteAt index) state
 foldp (SetCompleted ev index completed) st = noEffects $ modifyItems (modifyAt index (setCompleted completed)) st
 foldp (SetNotification notification) st = noEffects $ setNotification notification st
@@ -114,12 +119,33 @@ init = State
     , newItemName: ""
     }
 
+fakeServerResponses :: Array String
+fakeServerResponses =
+    [ "buy beer"
+    , "clean the house"
+    , "fix the bike"
+    , "get a lawyer"
+    , "buy a new shovel"
+    , "dispose of the corpses in garage"
+    , "get a haircut"
+    , "shave more often"
+    , "post something smart on twitter"
+    , "understand monad transformers"
+    , "blow up some things"
+    , "have fun"
+    , "visit new reaktor HQ"
+    ]
+
+getPseudorandomItem :: Number -> Maybe String
+getPseudorandomItem n = fakeServerResponses !! (floor n) `mod` (length fakeServerResponses)
+
 main :: forall e. Eff (CoreEffects (dom :: DOM | e)) Unit
 main = do
+    let fakeServer = AddReceivedItem <$> getPseudorandomItem <$> (every (10.0 * second))
     app <- start
         { initialState: init
         , view: list
         , foldp
-        , inputs: []
+        , inputs: [ fakeServer ]
         }
     renderToDOM "#root" app.markup app.input
