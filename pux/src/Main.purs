@@ -23,19 +23,19 @@ import DOM.Event.Event (preventDefault)
 import Signal.Time (every, second)
 
 -- State
-data State = State
+type State =
     { lists :: Array TodoList
     , notification :: Maybe String
     , newListName :: String
     }
 
-data TodoList = TodoList
+type TodoList =
     { items :: Array Todo
     , name :: String
     , newItemName :: String
     }
 
-data Todo = Todo
+type Todo =
     { name :: String
     , completed :: Boolean
     }
@@ -56,7 +56,7 @@ data Event
 
 -- Views
 appView :: State -> HTML Event
-appView (State st) =
+appView st =
     H.div do
        H.h1 $ text "TODO app"
        navi st.lists
@@ -71,7 +71,7 @@ notification n =
           notificationClassName m = if isJust m then "notification active" else "notification passive"
 
 list :: ListIndex -> TodoList -> HTML Event
-list index (TodoList todoList) =
+list index todoList =
     H.div ! key (show index) $ do
        H.h2 $ do
           text todoList.name
@@ -83,7 +83,7 @@ itemList :: ListIndex -> Array Todo -> HTML Event
 itemList listIndex todos = H.ul $ forWithIndex todos (todoItem listIndex) *> pure unit
 
 todoItem :: ListIndex -> ItemIndex -> Todo -> HTML Event
-todoItem listIndex index (Todo todo) =
+todoItem listIndex index todo =
     H.div ! key (show index) $ do
         H.span ! HA.className "name" $ text todo.name
         H.input ! HA.type' "checkbox" ! HA.checked (checkedValue todo.completed) #! HE.onClick (\ev -> SetCompleted ev listIndex index $ not todo.completed)
@@ -112,47 +112,47 @@ navi todoLists =
           naviItem :: Int -> TodoList -> HTML Event
           naviItem index todoList = H.li ! key (show index) $ text $ naviItemText todoList
           naviItemText :: TodoList -> String
-          naviItemText (TodoList todoList) = todoList.name <> " (" <> (show $ length todoList.items) <> ") items"
+          naviItemText todoList = todoList.name <> " (" <> (show $ length todoList.items) <> ") items"
 
 
 -- Handling of events
 foldp :: forall fx. Event -> State -> EffModel State Event (dom :: DOM | fx)
 foldp (ChangeNewItemName ev listIndex) state = withPreventDefault ev $ noEffects $ modifyLists (modifyAt listIndex $ setNewItemName (HE.targetValue ev)) state
-foldp (AddNewItem ev listIndex) state@(State st) = withNotification newItemName $ withPreventDefault ev $ noEffects $ modifyLists (modifyAt listIndex $ modifyItems $ appendNewTodo newItemName) state
+foldp (AddNewItem ev listIndex) state = withNotification newItemName $ withPreventDefault ev $ noEffects $ modifyLists (modifyAt listIndex $ modifyItems $ appendNewTodo newItemName) state
     where
-          newItemName = fromMaybe "" $ (\(TodoList tl) -> tl.newItemName) <$> (st.lists !! listIndex)
+          newItemName = fromMaybe "" $ (\tl -> tl.newItemName) <$> (state.lists !! listIndex)
 foldp (AddReceivedItem (Just name)) state = withNotification name $ noEffects $ modifyLists (modifyAt 0 $ modifyItems $ appendNewTodo name) state
 foldp (AddReceivedItem Nothing) state = noEffects state
 foldp (RemoveItem ev listIndex index) state = withPreventDefault ev $ noEffects $ modifyLists (modifyAt listIndex $ modifyItems $ deleteAt index) state
 foldp (SetCompleted ev listIndex index completed) state = noEffects $ modifyLists (modifyAt listIndex $ modifyItems $ modifyAt index $ setCompleted completed) state
 foldp (SetNotification notificationText) state = noEffects $ setNotification notificationText state
 foldp (ChangeNewListName ev) state = withPreventDefault ev $ noEffects $ setNewListName (HE.targetValue ev) state
-foldp (AddNewList ev) state@(State st) = withPreventDefault ev $ noEffects $ modifyLists (appendNewList st.newListName) state
+foldp (AddNewList ev) state = withPreventDefault ev $ noEffects $ modifyLists (appendNewList state.newListName) state
 foldp (RemoveList ev listIndex) state = withPreventDefault ev $ noEffects $ modifyLists (deleteAt listIndex) state
 
 modifyLists :: (Array TodoList -> Maybe (Array TodoList)) -> State -> State
-modifyLists updater (State st) = State st { lists = fromMaybe st.lists $  updater st.lists }
+modifyLists updater st = st { lists = fromMaybe st.lists $  updater st.lists }
 
 modifyItems :: (Array Todo -> Maybe (Array Todo)) -> TodoList -> TodoList
-modifyItems updater (TodoList tl) = TodoList tl { items = fromMaybe tl.items $ updater tl.items }
+modifyItems updater tl = tl { items = fromMaybe tl.items $ updater tl.items }
 
 setNewItemName :: String -> TodoList -> TodoList
-setNewItemName newItemName (TodoList tl) = TodoList tl { newItemName = newItemName }
+setNewItemName newItemName tl = tl { newItemName = newItemName }
 
 appendNewTodo :: String -> Array Todo -> Maybe (Array Todo)
-appendNewTodo name todos = if name == "" then Nothing else Just $ snoc todos $ Todo { name: name, completed: false }
+appendNewTodo name todos = if name == "" then Nothing else Just $ snoc todos { name: name, completed: false }
 
 setCompleted :: Boolean -> Todo -> Todo
-setCompleted completed (Todo todo) = Todo todo { completed = completed }
+setCompleted completed todo = todo { completed = completed }
 
 setNotification :: Maybe String -> State -> State
-setNotification notificationText (State st) = State st { notification = notificationText }
+setNotification notificationText st = st { notification = notificationText }
 
 setNewListName :: String -> State -> State
-setNewListName newName (State st) = State st { newListName = newName }
+setNewListName newName st = st { newListName = newName }
 
 appendNewList :: String -> Array TodoList -> Maybe (Array TodoList)
-appendNewList newListName todoLists = if newListName == "" then Nothing else Just $ snoc todoLists $ TodoList { name: newListName, items: [], newItemName: "" }
+appendNewList newListName todoLists = if newListName == "" then Nothing else Just $ snoc todoLists { name: newListName, items: [], newItemName: "" }
 
 withNotification :: forall fx. String -> EffModel State Event (dom :: DOM | fx) -> EffModel State Event (dom :: DOM | fx)
 withNotification notificationText { state, effects } =
@@ -169,12 +169,12 @@ withPreventDefault :: forall fx. HE.DOMEvent -> EffModel State Event (dom :: DOM
 withPreventDefault ev { state, effects } = { state: state, effects: effects <> [liftEff (preventDefault ev) *> pure Nothing] }
 
 init :: State
-init = State
+init =
     { lists:
-        [ TodoList
+        [
             { items:
-                [ Todo { name: "learn typescript", completed: false }
-                , Todo { name: "fix handbrake", completed: false }
+                [ { name: "learn typescript", completed: false }
+                , { name: "fix handbrake", completed: false }
                 ]
             , name: "List 1"
             , newItemName: ""
