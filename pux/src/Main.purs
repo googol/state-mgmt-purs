@@ -59,6 +59,7 @@ appView :: State -> HTML Event
 appView (State st) =
     H.div do
        H.h1 $ text "TODO app"
+       navi st.lists
        notification $ st.notification
        forWithIndex st.lists list *> pure unit
        newList st.newListName
@@ -102,6 +103,17 @@ newItem listIndex value =
     H.div ! HA.className "new-item" $ do
         H.input ! HA.placeholder "new item name" ! HA.value value #! HE.onChange (\ev -> ChangeNewItemName ev listIndex)
         H.button #! HE.onClick (\ev -> AddNewItem ev listIndex) $ text "Add new item"
+
+navi :: Array TodoList -> HTML Event
+navi todoLists =
+    H.ul ! HA.className "navi" $
+       forWithIndex todoLists naviItem *> pure unit
+    where
+          naviItem :: Int -> TodoList -> HTML Event
+          naviItem index todoList = H.li ! key (show index) $ text $ naviItemText todoList
+          naviItemText :: TodoList -> String
+          naviItemText (TodoList todoList) = todoList.name <> " (" <> (show $ length todoList.items) <> ") items"
+
 
 -- Handling of events
 foldp :: forall fx. Event -> State -> EffModel State Event (dom :: DOM | fx)
